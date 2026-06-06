@@ -64,8 +64,26 @@ function Player.setStorageValueTalkaction(self, param)
 	-- Try to convert the first parameter to a number. If it's not a number, treat it as a storage name
 	local storageKey = tonumber(split[1])
 	if storageKey == nil then
-		logger.warn("The storage key is not a number.")
-		self:sendCancelMessage("The storage key is not a number.")
+		storageKey = split[1]
+		-- The key is a name, so call setStorageValueByName instead of setStorageValue
+		if split[3] then
+			local targetPlayer = Player(string.trim(split[3]))
+			if not targetPlayer then
+				self:sendCancelMessage("Player not found.")
+				return true
+			else
+				local message = "Set storage: " .. storageKey .. " to player " .. split[3] .. " newValue: " .. value .. "."
+				self:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+				targetPlayer:kv():set(storageKey, value)
+				targetPlayer:save()
+				return true
+			end
+		else
+			local message = "Set storage: " .. storageKey .. " to player " .. self:getName() .. ", newValue: " .. value .. "."
+			self:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+			self:setStorageValueByName(split[1], value)
+			self:save()
+		end
 	else
 		-- The key is a number, so call setStorageValue as before
 		if split[3] then

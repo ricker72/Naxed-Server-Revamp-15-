@@ -1,27 +1,16 @@
 function onUpdateDatabase()
-	logger.info("Updating database to version 48 (House Auction)")
+	logger.info("Updating database to version 48 (player statements)")
 
 	db.query([[
-		ALTER TABLE `houses`
-		DROP `bid`,
-		DROP `bid_end`,
-		DROP `last_bid`,
-		DROP `highest_bidder`
-	]])
-
-	db.query([[
-		ALTER TABLE `houses`
-		ADD `bidder` int(11) NOT NULL DEFAULT '0',
-		ADD `bidder_name` varchar(255) NOT NULL DEFAULT '',
-		ADD `highest_bid` int(11) NOT NULL DEFAULT '0',
-		ADD `internal_bid` int(11) NOT NULL DEFAULT '0',
-		ADD `bid_end_date` int(11) NOT NULL DEFAULT '0',
-		ADD `state` smallint(5) UNSIGNED NOT NULL DEFAULT '0',
-		ADD `transfer_status` tinyint(1) DEFAULT '0'
-	]])
-
-	db.query([[
-		ALTER TABLE `accounts`
-		ADD `house_bid_id` int(11) NOT NULL DEFAULT '0'
+		CREATE TABLE IF NOT EXISTS `player_statements`(
+			`id` INT NOT NULL AUTO_INCREMENT,
+			`player_id` INT NOT NULL,
+			`receiver` TEXT NOT NULL,
+			`channel_id` INT NOT NULL DEFAULT 0,
+			`text` VARCHAR (255) NOT NULL,
+			`date` BIGINT NOT NULL DEFAULT 0,
+			PRIMARY KEY (`id`), KEY (`player_id`), KEY (`channel_id`),
+			FOREIGN KEY (`player_id`) REFERENCES `players`(`id`) ON DELETE CASCADE
+		)
 	]])
 end

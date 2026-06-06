@@ -33,7 +33,6 @@ addCharm:groupType("god")
 addCharm:register()
 
 ---------------- // ----------------
-
 local addMinorCharm = TalkAction("/addminorcharms")
 
 function addMinorCharm.onSay(player, words, param)
@@ -69,7 +68,6 @@ addMinorCharm:groupType("god")
 addMinorCharm:register()
 
 ---------------- // ----------------
-
 local resetCharm = TalkAction("/resetcharms")
 
 function resetCharm.onSay(player, words, param)

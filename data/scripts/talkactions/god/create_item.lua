@@ -1,5 +1,7 @@
 local createItem = TalkAction("/i")
 
+local ITEMS_LIMIT = 14400 -- lasting exercise weapon
+
 function createItem.onSay(player, words, param)
 	-- create log
 	logCommand(player, words, param)
@@ -21,67 +23,68 @@ function createItem.onSay(player, words, param)
 
 	local charges = itemType:getCharges()
 	local count = tonumber(split[2] or 1)
-	if count then
-		if itemType:isStackable() then
-			local mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
-			if not mainContainer then
-				player:addItemEx(Game.createItem(2854), CONST_SLOT_BACKPACK)
-				mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
+	if not count then
+		count = 1
+	end
+
+	if count > ITEMS_LIMIT then
+		player:sendCancelMessage(string.format("You can only create up to %d items at once.", ITEMS_LIMIT))
+		return true
+	end
+
+	if itemType:isStackable() then
+		local mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
+		if not mainContainer then
+			player:addItemEx(Game.createItem(2854), CONST_SLOT_BACKPACK)
+			mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
+		end
+
+		local remainingCount = count
+		local stackSize = itemType:getStackSize()
+
+		while remainingCount > 0 do
+			local freeSlots = mainContainer and (mainContainer:getCapacity() - mainContainer:getSize()) or 0
+			if freeSlots <= 1 and mainContainer:getSize() ~= 0 then
+				mainContainer = Game.createItem(2854)
+				player:addItemEx(mainContainer)
 			end
-			local remainingCount = count
-			local stackSize = itemType:getStackSize()
 
-			while remainingCount > 0 do
-				local freeSlots = mainContainer and (mainContainer:getCapacity() - mainContainer:getSize()) or 0
-				if freeSlots <= 1 and mainContainer:getSize() ~= 0 then
-					mainContainer = Game.createItem(2854)
-					player:addItemEx(mainContainer)
-				end
-
-				local countToAdd = math.min(remainingCount, stackSize)
-				local tmpItem = mainContainer:addItem(itemType:getId(), countToAdd)
-				if tmpItem then
-					remainingCount = remainingCount - countToAdd
-				else
-					logger.warn("Failed to add item: {}, to container", itemType:getName())
-					break
-				end
+			local countToAdd = math.min(remainingCount, stackSize)
+			local tmpItem = mainContainer:addItem(itemType:getId(), countToAdd)
+			if tmpItem then
+				remainingCount = remainingCount - countToAdd
+			else
+				logger.warn("Failed to add item: {}, to container", itemType:getName())
+				break
 			end
+		end
 
+		if not player:isInGhostMode() then
 			player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
-			return true
-		elseif not itemType:isFluidContainer() then
-			local min = 100
-			if charges > 0 then
-				min = charges
-			end
-			count = math.min(min, math.max(1, count))
+		end
+		return true
+	end
+
+	if not itemType:isFluidContainer() then
+		if charges > 0 then
+			count = math.min(charges, math.max(1, count))
 		else
-			count = math.max(0, count)
+			count = 1
 		end
 	else
-		if not itemType:isFluidContainer() then
-			if charges > 0 then
-				player:addItem(itemType:getId(), 0)
-				return true
-			else
-				count = 1
-			end
-		else
-			count = 0
-		end
+		count = math.max(0, count)
 	end
 
 	local result
 	local tier = tonumber(split[3])
-	if not tier then
-		result = player:addItem(itemType:getId(), count)
+
+	if tier then
+		result = player:addItem(itemType:getId(), count, true, 0, CONST_SLOT_WHEREEVER, tier)
 	else
-		if tier <= 0 or tier > 10 then
-			player:sendCancelMessage("Invalid tier count.")
-			return true
+		if itemType:getCharges() > 0 then
+			result = player:addItem(itemType:getId(), charges)
 		else
-			result = player:addItem(itemType:getId(), count, true, 0, CONST_SLOT_WHEREEVER, tier)
+			result = player:addItem(itemType:getId(), count)
 		end
 	end
 
@@ -95,7 +98,10 @@ function createItem.onSay(player, words, param)
 				result:decay()
 			end
 		end
-		player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+
+		if not player:isInGhostMode() then
+			player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+		end
 	end
 	return true
 end

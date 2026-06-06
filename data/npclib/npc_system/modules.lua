@@ -99,10 +99,6 @@ if Modules == nil then
 			return false
 		end
 
-		if player:getVocation():getBaseId() == VOCATION.BASE_ID.MONK and not parameters.monk then
-			return false
-		end
-
 		if player:isPremium() or not parameters.premium then
 			local promotion = player:getVocation():getPromotion()
 			local hasPromotion = player:kv():get("promoted")
@@ -382,7 +378,7 @@ if Modules == nil then
 	function FocusModule.messageMatcher(keywords, message)
 		for i, word in pairs(keywords) do
 			if type(word) == "string" then
-				if MsgContains(message, word) then
+				if string.find(message, word) and not string.find(message, "[%w+]" .. word) and not string.find(message, word .. "[%w+]") then
 					return true
 				end
 			end

@@ -2,9 +2,29 @@ local function sendBoostMessage(player, category, isIncreased)
 	return player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, string.format("Event! %s is %screased. Happy Hunting!", category, isIncreased and "in" or "de"))
 end
 
+local function onMovementRemoveProtection(playerId, oldPos, time)
+	local player = Player(playerId)
+	if not player then
+		return true
+	end
+
+	local playerPos = player:getPosition()
+	if (playerPos.x ~= oldPos.x or playerPos.y ~= oldPos.y or playerPos.z ~= oldPos.z) or player:getTarget() then
+		player:kv():remove("combat-protection")
+		return true
+	end
+
+	addEvent(onMovementRemoveProtection, 1000, playerId, oldPos, time - 1)
+end
+
 local playerLoginGlobal = CreatureEvent("PlayerLoginGlobal")
 
 function playerLoginGlobal.onLogin(player)
+	-- Disables the chain system by default unless enabled in `config.lua`.
+	if not configManager.getBoolean(configKeys.TOGGLE_CHAIN_SYSTEM) then
+		player:setFeature(Features.ChainSystem, 0)
+	end
+
 	-- Welcome
 	local loginStr
 	if player:getLastLoginSaved() == 0 then
@@ -34,8 +54,8 @@ function playerLoginGlobal.onLogin(player)
 	end
 
 	-- Boosted
-	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, string.format("Today's boosted creature: %s.", Game.getBoostedCreature()))
-	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, string.format("Today's boosted boss: %s.", Game.getBoostedBoss()))
+	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, string.format("Today's boosted creature: %s.\nBoosted creatures yield more experience points, carry more loot than usual, and respawn at a faster rate.", Game.getBoostedCreature()))
+	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, string.format("Today's boosted boss: %s.\nBoosted bosses contain more loot and count more kills for your Bosstiary.", Game.getBoostedBoss()))
 
 	-- Rewards
 	local rewards = #player:getRewardList()
@@ -62,6 +82,14 @@ function playerLoginGlobal.onLogin(player)
 
 	if SCHEDULE_SKILL_RATE ~= 100 then
 		sendBoostMessage(player, "Skill Rate", SCHEDULE_SKILL_RATE > 100)
+	end
+
+	if SCHEDULE_FIENDISH_RATE ~= 100 then
+		sendBoostMessage(player, "Fiendish Monsters", SCHEDULE_FIENDISH_RATE > 100)
+	end
+
+	if SCHEDULE_INFLUENCED_RATE ~= 100 then
+		sendBoostMessage(player, "Influenced Monsters", SCHEDULE_INFLUENCED_RATE > 100)
 	end
 
 	-- Send Recruiter Outfit
@@ -120,7 +148,7 @@ function playerLoginGlobal.onLogin(player)
 	end
 
 	-- Set Ghost Mode
-	if player:getGroup():getId() >= GROUP_TYPE_GAMEMASTER then
+	if player:getGroup():getId() >= GROUP_TYPE_GAMEMASTER and player:getGroup():getId() < GROUP_TYPE_TESTER then
 		player:setGhostMode(true)
 	end
 
@@ -132,13 +160,6 @@ function playerLoginGlobal.onLogin(player)
 	end
 
 	local playerId = player:getId()
-	if player.beginQuestTrackerInitialSync then
-		player:beginQuestTrackerInitialSync()
-	end
-	if player.loadTrackedMissions then
-		player:loadTrackedMissions(false)
-	end
-
 	_G.NextUseStaminaTime[playerId] = 1
 	_G.NextUseXpStamina[playerId] = 1
 	_G.NextUseConcoctionTime[playerId] = 1
@@ -154,56 +175,24 @@ function playerLoginGlobal.onLogin(player)
 		player:setRemoveBossTime(1)
 	end
 
-	-- Change support outfit to a normal outfit to open customize character without crashes
-	local playerOutfit = player:getOutfit()
-	if table.contains({ 75, 266, 302 }, playerOutfit.lookType) and not player:getGroup():getAccess() then
-		playerOutfit.lookType = player:getSex() == PLAYERSEX_FEMALE and 136 or 128
-		playerOutfit.lookAddons = 0
-		player:setOutfit(playerOutfit)
+	-- Remove combat protection
+	local isProtected = player:kv():get("combat-protection") or 0
+	if isProtected < 1 then
+		player:kv():set("combat-protection", 1)
+		onMovementRemoveProtection(playerId, player:getPosition(), 10)
 	end
+
+	-- fix stash
+	player:setSpecialContainersAvailable(true, true, true)
+
+	-- login log
+	player:saveLoginLog()
 
 	player:initializeLoyaltySystem()
 	player:registerEvent("PlayerDeath")
 	player:registerEvent("DropLoot")
 	player:registerEvent("BossParticipation")
 	player:registerEvent("UpdatePlayerOnAdvancedLevel")
-
-	-- Load the server-side quest tracker after the client has finished entering the game.
-	-- The tracker is persisted in player KV and no longer depends only on client cache.
-	addEvent(function(playerId)
-		local loginPlayer = Player(playerId)
-		if not loginPlayer then
-			return
-		end
-
-		if loginPlayer.loadTrackedMissions then
-			loginPlayer:loadTrackedMissions()
-		end
-
-		if loginPlayer.updateQuestTrackerKnownQuests then
-			loginPlayer:updateQuestTrackerKnownQuests(false)
-		end
-	end, QuestTrackerServerConfig.loginLoadDelay, playerId)
-
-	-- Safety fallback: keep a short window where empty client cache packets
-	-- cannot wipe the server-side tracker loaded from KV.
-	addEvent(function(playerId)
-		local loginPlayer = Player(playerId)
-		if not loginPlayer then
-			return
-		end
-		if loginPlayer.finishQuestTrackerInitialSync then
-			loginPlayer:finishQuestTrackerInitialSync()
-		end
-	end, QuestTrackerServerConfig.initialSyncWindow, playerId)
-
-	if vocation and vocation:getBaseId() == VOCATION.BASE_ID.MONK then
-		local kv = player:kv()
-		if (kv:get("monk-basic-atk-bonus") or 0) < 10 then
-			logger.info("Setting monk basic attack bonus 10 for player: {}.", player:getName())
-			kv:set("monk-basic-atk-bonus", 10)
-		end
-	end
 	return true
 end
 

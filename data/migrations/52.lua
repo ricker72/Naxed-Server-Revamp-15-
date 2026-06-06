@@ -1,72 +1,58 @@
 function onUpdateDatabase()
-	logger.info("Updating database to version 52 (missing constraints + delete cascade)")
+	logger.info("Updating database to version 52 (feat: support to 14.11)")
 
-	-- this one had no ON DELETE CASCADE, need to re-create it
 	db.query([[
 		ALTER TABLE `player_charms`
-		DROP CONSTRAINT player_charms_players_fk
+		DROP `rune_wound`,
+		DROP `rune_enflame`,
+		DROP `rune_poison`,
+		DROP `rune_freeze`,
+		DROP `rune_zap`,
+		DROP `rune_curse`,
+		DROP `rune_cripple`,
+		DROP `rune_parry`,
+		DROP `rune_dodge`,
+		DROP `rune_adrenaline`,
+		DROP `rune_numb`,
+		DROP `rune_cleanse`,
+		DROP `rune_bless`,
+		DROP `rune_scavenge`,
+		DROP `rune_gut`,
+		DROP `rune_low_blow`,
+		DROP `rune_divine`,
+		DROP `rune_vamp`,
+		DROP `rune_void`
 	]])
 
-	-- this one had wrong name, just correcting it
 	db.query([[
-		ALTER TABLE `player_taskhunt`
-		DROP PRIMARY KEY
+		ALTER TABLE `player_charms`
+		ADD `minor_charm_echoes` SMALLINT NOT NULL DEFAULT '0',
+		ADD `max_charm_points` SMALLINT NOT NULL DEFAULT '0',
+		ADD `max_minor_charm_echoes` SMALLINT NOT NULL DEFAULT '0',
+		ADD `charms` BLOB NULL
 	]])
 
 	db.query([[
-		ALTER TABLE account_vipgroups
-		ADD CONSTRAINT account_vipgroups_accounts_fk
-			FOREIGN KEY (account_id) REFERENCES accounts (id)
-			ON DELETE CASCADE
-	]])
-
-	db.query([[
-		ALTER TABLE players_online
-		ADD CONSTRAINT players_online_players_fk
-			FOREIGN KEY (player_id) REFERENCES players (id)
-			ON DELETE CASCADE
+		ALTER TABLE `player_charms`
+		MODIFY COLUMN `charm_points` SMALLINT NOT NULL DEFAULT '0',
+		MODIFY COLUMN `UsedRunesBit` INT NOT NULL DEFAULT '0',
+		MODIFY COLUMN `UnlockedRunesBit` INT NOT NULL DEFAULT '0',
+		MODIFY COLUMN `charm_expansion` BOOLEAN NOT NULL DEFAULT FALSE,
+		CHANGE COLUMN `player_guid` `player_id` int(11) NOT NULL
 	]])
 
 	db.query([[
 		ALTER TABLE player_charms
 		ADD CONSTRAINT player_charms_players_fk
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
+		FOREIGN KEY (player_id) REFERENCES players (id) ON DELETE CASCADE
 	]])
 
 	db.query([[
-		ALTER TABLE player_kills
-		ADD CONSTRAINT `player_kills_players_fk`
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
-	]])
-
-	db.query([[
-		ALTER TABLE player_prey
-		ADD CONSTRAINT `player_prey_players_fk`
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
-	]])
-
-	db.query([[
-		ALTER TABLE player_taskhunt
-		ADD CONSTRAINT `player_taskhunt_pk` PRIMARY KEY (`player_id`, `slot`),
-		ADD CONSTRAINT `player_taskhunt_players_fk`
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
-	]])
-
-	db.query([[
-		ALTER TABLE player_bosstiary
-		ADD CONSTRAINT `player_bosstiary_players_fk`
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
-	]])
-
-	db.query([[
-		ALTER TABLE player_stash
-		ADD CONSTRAINT `player_stash_players_fk`
-			FOREIGN KEY (`player_id`) REFERENCES `players` (`id`)
-			ON DELETE CASCADE
+		UPDATE `player_charms` pc
+		JOIN `players` p ON pc.player_id = p.id
+		SET 
+			pc.minor_charm_echoes = 100,
+			pc.max_minor_charm_echoes = 100
+		WHERE p.vocation >= 5
 	]])
 end

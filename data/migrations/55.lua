@@ -1,29 +1,59 @@
 function onUpdateDatabase()
-	logger.info("Updating database to version 55 (add monk sample player)")
+	logger.info("Updating database to version 55 (save outfits and mounts in database)")
 
-	-- Check if Monk Sample already exists
-	local resultId = db.storeQuery("SELECT `id` FROM `players` WHERE `name` = 'Monk Sample' LIMIT 1;")
+	db.query([[
+		CREATE TABLE IF NOT EXISTS `player_outfits` (`player_id` int DEFAULT 0 NOT NULL,`outfit_id` smallint unsigned DEFAULT 0 NOT NULL,`addons` tinyint unsigned DEFAULT 0 NOT NULL,
+		PRIMARY KEY (`player_id`,`outfit_id`),
+		FOREIGN KEY (`player_id`) REFERENCES `players`(`id`) ON DELETE CASCADE)
+		ENGINE=InnoDB DEFAULT CHARACTER SET=utf8;
+	]])
+
+	db.query([[
+		CREATE TABLE IF NOT EXISTS `player_mounts` (`player_id` int DEFAULT 0 NOT NULL,`mount_id` smallint unsigned DEFAULT 0 NOT NULL,
+		PRIMARY KEY (`player_id`,`mount_id`),
+		FOREIGN KEY (`player_id`) REFERENCES `players`(`id`) ON DELETE CASCADE)
+		ENGINE=InnoDB DEFAULT CHARACTER SET=utf8;
+	]])
+
+	db.query([[
+		ALTER TABLE `players`
+    	ADD `currentmount` smallint unsigned NOT NULL DEFAULT 0 AFTER `lookmountfeet`;
+	]])
+
+	local outfitRange = 10001000
+	local mountRange = 10002001
+
+	local resultId = db.storeQuery(string.format("SELECT `player_id`, `value` FROM `player_storage` WHERE `key` >= %d AND `key` <= %d", outfitRange, outfitRange + 500))
 	if resultId then
-		logger.warn("Monk Sample player already exists, skipping migration")
+		repeat
+			local playerId = Result.getNumber(resultId, "player_id")
+			local outfitId = bit.rshift(Result.getNumber(resultId, "value"), 16)
+			local addons = bit.band(Result.getNumber(resultId, "value"), 0xFF)
+
+			db.query(string.format("INSERT INTO `player_outfits` (`player_id`, `outfit_id`, `addons`) VALUES (%d, %d, %d)", playerId, outfitId, addons))
+		until not Result.next(resultId)
 		Result.free(resultId)
-		return
 	end
 
-	-- Find the next available player ID
-	local maxIdResult = db.storeQuery("SELECT MAX(`id`) as max_id FROM `players`;")
-	local nextId = 1
-	if maxIdResult then
-		nextId = Result.getNumber(maxIdResult, "max_id") + 1
-		Result.free(maxIdResult)
+	local resultId = db.storeQuery(string.format("SELECT `player_id`, `key`, `value` FROM `player_storage` WHERE `key` >= %d AND `key` <= %d", mountRange, mountRange + 10))
+	if resultId then
+		repeat
+			for i = 1, 200 do
+				local key = mountRange + ((i - 1) / 31)
+				if key == Result.getNumber(resultId, "key") then
+					local playerId = Result.getNumber(resultId, "player_id")
+					local lshift = bit.lshift(1, ((i - 1) % 31))
+					local mount = bit.band(lshift, Result.getNumber(resultId, "value"))
+
+					if mount ~= 0 then
+						db.query(string.format("INSERT INTO `player_mounts` (`player_id`, `mount_id`) VALUES (%d, %d)", playerId, i))
+					end
+				end
+			end
+		until not Result.next(resultId)
+		Result.free(resultId)
 	end
 
-	logger.info("Inserting Monk Sample player with ID: " .. nextId)
-
-	-- Insert Monk Sample player with the next available ID
-	db.query(
-		string.format(
-			"INSERT INTO `players` (`id`, `name`, `group_id`, `account_id`, `level`, `vocation`, `health`, `healthmax`, `experience`, `lookbody`, `lookfeet`, `lookhead`, `looklegs`, `looktype`, `maglevel`, `mana`, `manamax`, `manaspent`, `town_id`, `conditions`, `cap`, `sex`, `skill_club`, `skill_club_tries`, `skill_sword`, `skill_sword_tries`, `skill_axe`, `skill_axe_tries`, `skill_dist`, `skill_dist_tries`, `comment`) VALUES (%d, 'Monk Sample', 1, 1, 8, 9, 185, 185, 4200, 113, 115, 95, 39, 129, 0, 90, 90, 0, 8, '', 470, 1, 10, 0, 10, 0, 10, 0, 10, 0, '');",
-			nextId
-		)
-	)
+	-- deleting all outfit & mount storages at once
+	db.asyncQuery(string.format("DELETE FROM `player_storage` WHERE `key` >= %d AND `key` <= %d OR `key` >= %d AND `key` <= %d", outfitRange, outfitRange + 500, mountRange, mountRange + 10))
 end

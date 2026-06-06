@@ -117,6 +117,14 @@ local looktypes = {
 	1663,
 	1676,
 	1681,
+	1808,
+	1825,
+	1832,
+	1838,
+	1846,
+	1861,
+	1875,
+	1906,
 
 	-- Male Outfits
 	1714,
@@ -246,6 +254,13 @@ local looktypes = {
 	1745,
 	1774,
 	1776,
+	1809,
+	1824,
+	1831,
+	1837,
+	1860,
+	1874,
+	1907,
 }
 
 function addaddon.onSay(player, words, param)

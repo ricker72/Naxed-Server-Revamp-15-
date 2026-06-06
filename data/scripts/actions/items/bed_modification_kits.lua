@@ -19,12 +19,8 @@ end
 local bedModificationKits = Action()
 
 function bedModificationKits.onUse(player, item, fromPosition, target, toPosition, isHotkey)
-	if not target or type(target) ~= "userdata" or not target:isItem() then
-		return false
-	end
-
 	local newBed = setting[item:getId()]
-	if not newBed then
+	if not newBed or not target or not target:isItem() then
 		return false
 	end
 

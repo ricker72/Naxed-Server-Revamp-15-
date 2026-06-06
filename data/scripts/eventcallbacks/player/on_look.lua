@@ -22,16 +22,9 @@ local function getPositionDescription(position)
 	end
 end
 
-local function handleItemDescription(inspectedThing, lookDistance, player)
+local function handleItemDescription(inspectedThing, lookDistance)
 	local descriptionText = inspectedThing:getDescription(lookDistance)
 
-	if not player:getGroup():getAccess() then
-		if inspectedThing:getId() == ITEM_MAGICWALL or inspectedThing:getId() == ITEM_MAGICWALL_SAFE then
-			return "You see a magic wall."
-		elseif inspectedThing:getId() == ITEM_WILDGROWTH or inspectedThing:getId() == ITEM_WILDGROWTH_SAFE then
-			return "You see rush wood."
-		end
-	end
 	if isSpecialItem(inspectedThing.itemid) then
 		local itemCharges = inspectedThing:getCharges()
 		if itemCharges > 0 then
@@ -49,7 +42,7 @@ local function handleCreatureDescription(inspectedThing, lookDistance)
 
 	if inspectedThing:isMonster() then
 		local monsterMaster = inspectedThing:getMaster()
-		if monsterMaster and table.contains(FAMILIARSNAME, inspectedThing:getName():lower()) then
+		if monsterMaster and table.contains({ "sorcerer familiar", "knight familiar", "druid familiar", "paladin familiar", "monk familiar" }, inspectedThing:getName():lower()) then
 			local summonTimeRemaining = monsterMaster:kv():get("familiar-summon-time") or 0
 			descriptionText = string.format("%s (Master: %s). It will disappear in %s", descriptionText, monsterMaster:getName(), Game.getTimeInWords(summonTimeRemaining - os.time()))
 		end
@@ -126,7 +119,7 @@ function callback.playerOnLook(player, inspectedThing, inspectedPosition, lookDi
 	local descriptionText
 
 	if inspectedThing:isItem() then
-		descriptionText = handleItemDescription(inspectedThing, lookDistance, player)
+		descriptionText = handleItemDescription(inspectedThing, lookDistance)
 	elseif inspectedThing:isCreature() then
 		descriptionText = handleCreatureDescription(inspectedThing, lookDistance)
 	end

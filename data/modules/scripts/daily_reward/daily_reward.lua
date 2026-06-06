@@ -76,7 +76,7 @@ local DailyRewardItems = {
 
 DailyReward = {
 	testMode = false,
-	serverTimeThreshold = (25 * 60 * 60), -- Counting down 24hours from last server save
+	serverTimeThreshold = (24 * 60 * 60), -- Counting down 24hours from last server save
 
 	storages = {
 		-- Player
@@ -268,7 +268,8 @@ DailyReward.pickedReward = function(playerId)
 	player:setStreakLevel(player:getStreakLevel() + 1)
 	player:setStorageValue(DailyReward.storages.avoidDouble, GetDailyRewardLastServerSave())
 	player:setDailyReward(DAILY_REWARD_COLLECTED)
-	player:setNextRewardTime(GetDailyRewardLastServerSave() + DailyReward.serverTimeThreshold)
+	player:setNextRewardTime(os.time() + DailyReward.serverTimeThreshold)
+
 	player:getPosition():sendMagicEffect(CONST_ME_FIREWORK_YELLOW)
 	return true
 end
@@ -286,7 +287,12 @@ DailyReward.isRewardTaken = function(playerId)
 		return false
 	end
 	local playerStorage = player:getStorageValue(DailyReward.storages.avoidDouble)
-	if playerStorage == GetDailyRewardLastServerSave() then
+	local lastSave = GetDailyRewardLastServerSave()
+	local nextReward = player:getNextRewardTime()
+	if nextReward > 0 and os.time() >= nextReward then
+		return false
+	end
+	if playerStorage == lastSave then
 		return true
 	end
 	return false
@@ -304,18 +310,23 @@ DailyReward.init = function(playerId)
 		player:setJokerTokens(player:getJokerTokens() + 1)
 	end
 
-	local timeMath = GetDailyRewardLastServerSave() - player:getNextRewardTime()
-	if player:getNextRewardTime() < GetDailyRewardLastServerSave() then
-		if player:getStorageValue(DailyReward.storages.notifyReset) ~= GetDailyRewardLastServerSave() then
-			player:setStorageValue(DailyReward.storages.notifyReset, GetDailyRewardLastServerSave())
+	local timeMath = os.time() - player:getNextRewardTime()
+	if player:getNextRewardTime() > 0 and os.time() >= player:getNextRewardTime() then
+		if player:getStorageValue(DailyReward.storages.notifyReset) ~= player:getNextRewardTime() then
+			player:setStorageValue(DailyReward.storages.notifyReset, player:getNextRewardTime())
 			timeMath = math.ceil(timeMath / DailyReward.serverTimeThreshold)
-			if player:getJokerTokens() >= timeMath then
+			if timeMath < 0 then
+				timeMath = 0
+			end
+			if player:getJokerTokens() >= timeMath and timeMath > 0 then
 				player:setJokerTokens(player:getJokerTokens() - timeMath)
 				player:sendTextMessage(MESSAGE_LOGIN, "You lost " .. timeMath .. " joker tokens to prevent loosing your streak.")
 			else
 				player:setStreakLevel(0)
 				if player:getLastLoginSaved() > 0 then -- message wont appear at first character login
-					player:setJokerTokens(-(player:getJokerTokens()))
+					if player:getJokerTokens() > 0 then
+						player:setJokerTokens(-(player:getJokerTokens()))
+					end
 					player:sendTextMessage(MESSAGE_LOGIN, "You just lost your daily reward streak.")
 				end
 			end
@@ -354,7 +365,7 @@ function Player.sendOpenRewardWall(self, shrine)
 	if DailyReward.testMode or not (DailyReward.isRewardTaken(self:getId())) then
 		msg:addU32(0)
 	else
-		msg:addU32(GetDailyRewardLastServerSave() + DailyReward.serverTimeThreshold)
+		msg:addU32(self:getNextRewardTime())
 	end
 	msg:addByte(self:getDayStreak()) -- current reward? day = 0, day 1, ... this should be resetted to 0 every week imo
 	if DailyReward.isRewardTaken(self:getId()) then -- state (player already took reward? but just make sure noone wpe)
@@ -369,7 +380,11 @@ function Player.sendOpenRewardWall(self, shrine)
 	else
 		msg:addByte(0)
 		msg:addByte(2)
-		msg:addU32(GetDailyRewardLastServerSave() + DailyReward.serverTimeThreshold) --timeLeft to pickUp reward without loosing streak
+		local availableAt = self:getNextRewardTime()
+		if availableAt <= 0 then
+			availableAt = GetDailyRewardLastServerSave() + DailyReward.serverTimeThreshold
+		end
+		msg:addU32(availableAt) -- timeLeft to pick up reward without losing streak
 		msg:addU16(self:getJokerTokens())
 	end
 	msg:addU16(self:getStreakLevel()) -- day strike
@@ -422,7 +437,7 @@ function Player.selectDailyReward(self, msg)
 	-- Items as reward
 	if dailyTable.type == DAILY_REWARD_TYPE_ITEM then
 		local items = {}
-		local possibleItems = DailyRewardItems[self:getVocation():getBaseId()] or DailyRewardItems[0]
+		local possibleItems = DailyRewardItems[self:getVocation():getBaseId()]
 		if dailyTable.items then
 			possibleItems = dailyTable.items
 		end
@@ -455,25 +470,49 @@ function Player.selectDailyReward(self, msg)
 		-- Adding items to store inbox
 		local inbox = self:getStoreInbox()
 		local inboxItems = inbox:getItems()
-		if not inbox or #inboxItems >= inbox:getMaxCapacity() then
+		if not inbox or #inboxItems + #items > inbox:getMaxCapacity() then
 			self:sendError("You do not have enough space in your store inbox.")
 			return false
 		end
 
 		local description = ""
 		for k, v in ipairs(items) do
+			local itemType = ItemType(v.itemId)
 			if dailyTable.itemCharges then
-				local inboxItem = inbox:addItem(v.itemId, dailyTable.itemCharges) -- adding charges for each item
-				if inboxItem then
-					inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+				-- apply charges to non stackable items
+				if not itemType:isStackable() then
+					for i = 1, v.count do
+						local inboxItem = inbox:addItem(v.itemId, 1)
+						if inboxItem then
+							inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+							inboxItem:setAttribute(ITEM_ATTRIBUTE_CHARGES, dailyTable.itemCharges) -- Cargas SOLO aquí
+						end
+					end
+				else
+					-- add stackable items
+					local inboxItem = inbox:addItem(v.itemId, v.count)
+					if inboxItem then
+						inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+					end
 				end
+				description = description .. "" .. v.count .. "x " .. itemType:getName() .. (k ~= #items and ", " or ".")
 			else
-				local inboxItem = inbox:addItem(v.itemId, v.count) -- adding single item w/o charges
-				if inboxItem then
-					inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+				-- items without charges defined with normal behaivor
+				if itemType:isStackable() then
+					local inboxItem = inbox:addItem(v.itemId, v.count)
+					if inboxItem then
+						inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+					end
+				else
+					for i = 1, v.count do
+						local inboxItem = inbox:addItem(v.itemId, 1)
+						if inboxItem then
+							inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+						end
+					end
 				end
+				description = description .. "" .. v.count .. "x " .. itemType:getName() .. (k ~= #items and ", " or ".")
 			end
-			description = description .. "" .. rewardCount .. "x " .. ItemType(v.itemId):getName() .. (k ~= columnsPicked and ", " or ".")
 		end
 		dailyRewardMessage = "Picked items: " .. description
 	elseif dailyTable.type == DAILY_REWARD_TYPE_XP_BOOST then
@@ -555,7 +594,7 @@ function Player.readDailyReward(self, msg, currentDay, state)
 	end
 
 	if systemType == DAILY_REWARD_SYSTEM_TYPE_ONE then
-		rewards = DailyRewardItems[self:getVocation():getBaseId()] or DailyRewardItems[0]
+		rewards = DailyRewardItems[self:getVocation():getBaseId()]
 		if dailyTable.items then
 			rewards = dailyTable.items
 		end
